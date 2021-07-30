@@ -2,10 +2,12 @@
 #include <Wire.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
-#include <U8g2lib.h>
+// #include <U8g2lib.h>
+#include <U8x8lib.h>
 #include <string.h>
 
-U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
+// U8G2_SSD1306_128X64_NONAME_F_HW_I2C disp(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
+U8X8_SSD1306_128X64_NONAME_HW_I2C disp;
 
 #define RELAY_PIN 11
 
@@ -30,15 +32,15 @@ void setup() {
     pinMode(LED_BUILTIN, OUTPUT);
     digitalWrite(RELAY_PIN, LOW);
 
-    u8g2.begin();
-    u8g2.setFont(u8g2_font_logisoso20_tr);	// choose a suitable font
+    disp.begin();
+    disp.setFont(u8x8_font_courB18_2x3_r);
+    disp.clear();
 
     sensors.begin();
     if (sensors.getDeviceCount() < 1 || !sensors.getAddress(thermometer, 0)) {
-        u8g2.clearBuffer();
-        u8g2.drawStr(0, FIRST_ROW, "Sensor");
-        u8g2.drawStr(0, SECOND_ROW, "missing");
-        u8g2.sendBuffer();
+        disp.clear();
+        disp.drawString(0, 0, "Sensor");
+        disp.drawString(0, 3, "missing");
         while(1);
     }
 }
@@ -48,6 +50,8 @@ void loop() {
     char bufSet[10];
     static float lastTemp = 0.0;
     static float setTemp = DEFAULT_SET_POINT;
+    static int dRows = disp.getRows();
+    static int dCols = disp.getCols();
     bool doUpdate = false;
     static bool active = false;
     
@@ -56,40 +60,34 @@ void loop() {
 
     doUpdate = nowTemp != lastTemp;
 
+    if (nowTemp >= DEFAULT_SET_POINT + DEFAULT_HIST) {
+        digitalWrite(RELAY_PIN, HIGH);
+        active = true;
+        doUpdate = true;
+    } 
+    if (nowTemp <= DEFAULT_SET_POINT - DEFAULT_HIST) {
+        digitalWrite(RELAY_PIN, LOW);
+        active = false;
+        doUpdate = true;
+    }
+
     if (doUpdate) {
         lastTemp = nowTemp; 
         dtostrf(nowTemp, 3, 1, bufNow);
         dtostrf(setTemp, 3, 1, bufSet);
 
-        u8g2.clearBuffer();
-        
-        // first row
-        if (active) { 
-            u8g2.
+        // // first row
+        disp.drawString(0, 0, "NOW");
+        if (active) {
+            disp.inverse();
         } else {
-            u8g2.noInverse();
+            disp.noInverse();
         }
-        uint8_t hLen = u8g2.getStrWidth("SOLL");
-        u8g2.drawStr((64 - hLen) / 2, FIRST_ROW, "IST");
-        u8g2.drawStr((64 - hLen) / 2 + 64, FIRST_ROW, "SOLL");
+        disp.drawString(dCols / 2, 0, bufNow);
 
-        // second row
-        uint8_t sLen = u8g2.getStrWidth(bufSet);
-        uint8_t nLen = u8g2.getStrWidth(bufNow);
-        u8g2.drawStr((64 - nLen) / 2, SECOND_ROW, bufNow);
-        u8g2.drawStr((64 - sLen) / 2 + 64, SECOND_ROW, bufSet);
-
-        u8g2.drawHVLine(64, 0, 64, 1);
-        
-        u8g2.sendBuffer();
-    }
-
-    if (nowTemp >= DEFAULT_SET_POINT + DEFAULT_HIST) {
-        digitalWrite(RELAY_PIN, HIGH);
-        active = true;
-    } 
-    if (nowTemp <= DEFAULT_SET_POINT - DEFAULT_HIST) {
-        digitalWrite(RELAY_PIN, LOW);
-        active = false;
+        // // second row
+        disp.noInverse();
+        disp.drawString(0, dRows/2, "SET");
+        disp.drawString(dCols / 2, dRows/2, bufSet);
     }
 }
