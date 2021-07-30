@@ -6,7 +6,6 @@
 #include <U8x8lib.h>
 #include <string.h>
 
-// U8G2_SSD1306_128X64_NONAME_F_HW_I2C disp(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
 U8X8_SSD1306_128X64_NONAME_HW_I2C disp;
 
 #define RELAY_PIN 11
@@ -14,7 +13,7 @@ U8X8_SSD1306_128X64_NONAME_HW_I2C disp;
 #define FIRST_ROW 26
 #define SECOND_ROW 58
 
-#define DEFAULT_SET_POINT 30
+#define DEFAULT_SET_POINT 4
 #define DEFAULT_HIST      1
 
 // Data wire is plugged into port 2 on the Arduino
