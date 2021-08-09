@@ -2,19 +2,23 @@
 #include <Wire.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
-// #include <U8g2lib.h>
-#include <U8x8lib.h>
+#include <U8g2lib.h>
+#include <EEPROM.h>
 #include <string.h>
+#include <OneButton.h>
 
 U8X8_SSD1306_128X64_NONAME_HW_I2C disp;
 
 #define RELAY_PIN 11
+#define BUT_UP    5
+#define BUT_DOWN  6
 
 #define FIRST_ROW 26
 #define SECOND_ROW 58
 
 #define DEFAULT_SET_POINT 4
 #define DEFAULT_HIST      1
+#define EEPROM_SAVE_DELAY 3000
 
 // Data wire is plugged into port 2 on the Arduino
 #define ONE_WIRE_BUS 12
@@ -22,11 +26,45 @@ U8X8_SSD1306_128X64_NONAME_HW_I2C disp;
 // Setup a oneWire instance to communicate with any OneWire devices (not just Maxim/Dallas temperature ICs)
 OneWire oneWire(ONE_WIRE_BUS);
 
+OneButton upButton = OneButton(
+  BUT_UP,  // Input pin for the button
+  true,        // Button is active LOW
+  true         // Enable internal pull-up resistor
+);
+
+OneButton downButton = OneButton(
+  BUT_DOWN,  // Input pin for the button
+  true,        // Button is active LOW
+  true         // Enable internal pull-up resistor
+);
+
 // Pass our oneWire reference to Dallas Temperature. 
 DallasTemperature sensors(&oneWire);
 DeviceAddress thermometer;
 
+
+typedef union flTemp {
+    float value;
+    uint8_t bytes;
+} floatTemp;
+
+floatTemp setTemp;
+bool doUpdate = false;
+unsigned long lastButton = ULONG_MAX;
+
+static void handleUpClick() {
+        setTemp.value += 0.5;
+        doUpdate = true;
+        lastButton = millis();
+}
+static void handleDownClick() {
+        setTemp.value -= 0.5;
+        doUpdate = true;
+        lastButton = millis();
+}
+
 void setup() {
+    setTemp.value = DEFAULT_SET_POINT;
     pinMode(RELAY_PIN, OUTPUT);
     pinMode(LED_BUILTIN, OUTPUT);
     digitalWrite(RELAY_PIN, LOW);
@@ -42,29 +80,40 @@ void setup() {
         disp.drawString(0, 3, "missing");
         while(1);
     }
+    EEPROM.begin();
+    (&setTemp.bytes)[0] = EEPROM.read(0);
+    (&setTemp.bytes)[1] = EEPROM.read(1);
+    (&setTemp.bytes)[2] = EEPROM.read(2);
+    (&setTemp.bytes)[3] = EEPROM.read(3);
+
+    upButton.attachClick(handleUpClick);
+    downButton.attachClick(handleDownClick);
+
 }
 
 void loop() {
     char bufNow[10];
     char bufSet[10];
     static float lastTemp = 0.0;
-    static float setTemp = DEFAULT_SET_POINT;
     static int dRows = disp.getRows();
     static int dCols = disp.getCols();
-    bool doUpdate = false;
     static bool active = false;
-    
+
     sensors.requestTemperatures();
     float nowTemp = sensors.getTempC(thermometer);
 
     doUpdate = nowTemp != lastTemp;
 
-    if (nowTemp >= DEFAULT_SET_POINT + DEFAULT_HIST) {
+    upButton.tick();
+    downButton.tick();
+
+    if (nowTemp >= setTemp.value + DEFAULT_HIST) {
         digitalWrite(RELAY_PIN, HIGH);
         active = true;
         doUpdate = true;
-    } 
-    if (nowTemp <= DEFAULT_SET_POINT - DEFAULT_HIST) {
+    }
+
+    if (nowTemp <= setTemp.value - DEFAULT_HIST) {
         digitalWrite(RELAY_PIN, LOW);
         active = false;
         doUpdate = true;
@@ -73,7 +122,7 @@ void loop() {
     if (doUpdate) {
         lastTemp = nowTemp; 
         dtostrf(nowTemp, 3, 1, bufNow);
-        dtostrf(setTemp, 3, 1, bufSet);
+        dtostrf(setTemp.value, 3, 1, bufSet);
 
         // // first row
         disp.drawString(0, 0, "NOW");
@@ -88,5 +137,13 @@ void loop() {
         disp.noInverse();
         disp.drawString(0, dRows/2, "SET");
         disp.drawString(dCols / 2, dRows/2, bufSet);
+    }
+
+    if (millis() - EEPROM_SAVE_DELAY > lastButton ) {
+        lastButton = ULONG_MAX; // suspend until next button press
+        EEPROM.update(0, (&setTemp.bytes)[0]);
+        EEPROM.update(1, (&setTemp.bytes)[1]);
+        EEPROM.update(2, (&setTemp.bytes)[2]);
+        EEPROM.update(3, (&setTemp.bytes)[3]);
     }
 }
