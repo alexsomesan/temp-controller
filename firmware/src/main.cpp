@@ -43,17 +43,15 @@ OneButton downButton = OneButton(
 DallasTemperature sensors(&oneWire);
 DeviceAddress thermometer;
 
-
 typedef union flTemp {
     float value;
     uint8_t bytes;
 } floatTemp;
 
 floatTemp setTemp;
+
 bool doUpdate = false;
 unsigned long lastButton = ULONG_MAX;
-unsigned long lastSense = 0;
-
 
 static void handleUpClick() {
         setTemp.value += 0.5;
@@ -98,6 +96,8 @@ void setup() {
 }
 
 void loop() {
+    unsigned long now = millis();
+
     char bufNow[10];
     char bufSet[10];
     static float lastTemp = 0.0;
@@ -105,16 +105,17 @@ void loop() {
     static int dCols = disp.getCols();
     static bool active = false;
     static float nowTemp = 0;
+    static unsigned long lastSense = now - TEMP_SENSE_DELAY;
 
-    if (millis() - TEMP_SENSE_DELAY > lastSense) {
+    upButton.tick();
+    downButton.tick();
+
+    if ((now - TEMP_SENSE_DELAY > lastSense) && lastButton == ULONG_MAX) {
         lastSense = millis();
         sensors.requestTemperatures();
         nowTemp = sensors.getTempC(thermometer);
         doUpdate = doUpdate || (nowTemp != lastTemp);
     }
-
-    upButton.tick();
-    downButton.tick();
 
     if (nowTemp >= setTemp.value + DEFAULT_HIST) {
         digitalWrite(RELAY_PIN, HIGH);
@@ -131,8 +132,8 @@ void loop() {
     if (doUpdate) {
         doUpdate = false;
         lastTemp = nowTemp; 
-        dtostrf(nowTemp, 3, 1, bufNow);
-        dtostrf(setTemp.value, 3, 1, bufSet);
+        dtostrf(nowTemp, 4, 1, bufNow);
+        dtostrf(setTemp.value, 4, 1, bufSet);
 
         // // first row
         disp.drawString(0, 0, "NOW");
@@ -149,7 +150,7 @@ void loop() {
         disp.drawString(dCols / 2, dRows/2, bufSet);
     }
 
-    if (millis() - EEPROM_SAVE_DELAY > lastButton ) {
+    if (millis() - EEPROM_SAVE_DELAY > lastButton) {
         lastButton = ULONG_MAX; // suspend until next button press
         EEPROM.update(0, (&setTemp.bytes)[0]);
         EEPROM.update(1, (&setTemp.bytes)[1]);
