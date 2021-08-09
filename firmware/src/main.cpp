@@ -19,6 +19,7 @@ U8X8_SSD1306_128X64_NONAME_HW_I2C disp;
 #define DEFAULT_SET_POINT 4
 #define DEFAULT_HIST      1
 #define EEPROM_SAVE_DELAY 3000
+#define TEMP_SENSE_DELAY 3000
 
 // Data wire is plugged into port 2 on the Arduino
 #define ONE_WIRE_BUS 12
@@ -51,6 +52,8 @@ typedef union flTemp {
 floatTemp setTemp;
 bool doUpdate = false;
 unsigned long lastButton = ULONG_MAX;
+unsigned long lastSense = 0;
+
 
 static void handleUpClick() {
         setTemp.value += 0.5;
@@ -80,15 +83,18 @@ void setup() {
         disp.drawString(0, 3, "missing");
         while(1);
     }
+
     EEPROM.begin();
     (&setTemp.bytes)[0] = EEPROM.read(0);
     (&setTemp.bytes)[1] = EEPROM.read(1);
     (&setTemp.bytes)[2] = EEPROM.read(2);
     (&setTemp.bytes)[3] = EEPROM.read(3);
+    if (setTemp.value == NAN || setTemp.value > 50.0 || setTemp.value < -50.0) {
+        setTemp.value = DEFAULT_SET_POINT;
+    }
 
     upButton.attachClick(handleUpClick);
     downButton.attachClick(handleDownClick);
-
 }
 
 void loop() {
@@ -98,11 +104,14 @@ void loop() {
     static int dRows = disp.getRows();
     static int dCols = disp.getCols();
     static bool active = false;
+    static float nowTemp = 0;
 
-    sensors.requestTemperatures();
-    float nowTemp = sensors.getTempC(thermometer);
-
-    doUpdate = nowTemp != lastTemp;
+    if (millis() - TEMP_SENSE_DELAY > lastSense) {
+        lastSense = millis();
+        sensors.requestTemperatures();
+        nowTemp = sensors.getTempC(thermometer);
+        doUpdate = doUpdate || (nowTemp != lastTemp);
+    }
 
     upButton.tick();
     downButton.tick();
@@ -120,6 +129,7 @@ void loop() {
     }
 
     if (doUpdate) {
+        doUpdate = false;
         lastTemp = nowTemp; 
         dtostrf(nowTemp, 3, 1, bufNow);
         dtostrf(setTemp.value, 3, 1, bufSet);
